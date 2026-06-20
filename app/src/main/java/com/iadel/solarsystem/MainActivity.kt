@@ -5,27 +5,61 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDp
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed // Updated to itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin // Added
+import androidx.compose.ui.graphics.graphicsLayer // Added
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -42,24 +76,260 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-//            SolarSystemTheme {
-//                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-//
-//                }
-//            }
+            SolarSystemTheme {
+                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                    EarthIntroScreen(modifier = Modifier.padding(innerPadding))
+                }
+            }
         }
     }
 }
 
 @Composable
 fun EarthIntroScreen(modifier: Modifier = Modifier) {
+    val configuration = LocalConfiguration.current
+    val screenHeight = configuration.screenHeightDp.dp
 
+    var isExploring by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+
+    // 1. Nested Scroll to detect swipe down when the planet list is at the very top
+    val nestedScrollConnection = remember(isExploring) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (isExploring && available.y > 0f) {
+                    if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0) {
+                        isExploring = false
+                        return Offset(0f, available.y) // Consume gesture to animate back
+                    }
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
+    val transition = updateTransition(targetState = isExploring, label = "explore_transition")
+
+    // --- EARTH CONFIGURATION (Matched perfectly to Figma dimensions) ---
+    val earthSize by transition.animateDp(
+        transitionSpec = { tween(durationMillis = 700, easing = FastOutSlowInEasing) },
+        label = "earth_size"
+    ) { exploring ->
+        if (exploring) 260.dp else 644.dp
+    }
+
+    val startEarthY = screenHeight - 644.dp + 58.dp
+    val earthOffsetY by transition.animateDp(
+        transitionSpec = { tween(durationMillis = 700, easing = FastOutSlowInEasing) },
+        label = "earth_y"
+    ) { exploring ->
+        if (exploring) 32.dp else startEarthY
+    }
+
+    // --- INTRO SCREEN ANIMATIONS ---
+    val introAlpha by transition.animateFloat(
+        transitionSpec = { tween(durationMillis = 350) },
+        label = "intro_alpha"
+    ) { exploring ->
+        if (exploring) 0f else 1f
+    }
+
+    val introHeaderOffsetY by transition.animateDp(
+        transitionSpec = { tween(durationMillis = 400) },
+        label = "intro_header_y"
+    ) { exploring ->
+        if (exploring) (-60).dp else 56.dp
+    }
+
+    val tipOffsetY by transition.animateDp(
+        transitionSpec = { tween(durationMillis = 400) },
+        label = "tip_y"
+    ) { exploring ->
+        if (exploring) 60.dp else 0.dp
+    }
+
+    // --- EXPLORE/FIGMA SCREEN ANIMATIONS ---
+    val exploreAlpha by transition.animateFloat(
+        transitionSpec = { tween(durationMillis = 450, delayMillis = 200) },
+        label = "explore_alpha"
+    ) { exploring ->
+        if (exploring) 1f else 0f
+    }
+
+    val exploreHeaderOffsetY by transition.animateDp(
+        transitionSpec = { tween(durationMillis = 450, delayMillis = 200) },
+        label = "explore_header_y"
+    ) { exploring ->
+        if (exploring) 64.dp else 20.dp
+    }
+
+    val listOffsetY by transition.animateDp(
+        transitionSpec = {
+            tween(
+                durationMillis = 550,
+                delayMillis = 200,
+                easing = FastOutSlowInEasing
+            )
+        },
+        label = "list_y"
+    ) { exploring ->
+        if (exploring) 0.dp else 300.dp
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFF020D3C),
+                        Color(0xFF0F172A),
+                        Color(0xFF060816),
+                        Color(0xFF000000),
+                    ),
+                )
+            )
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .navigationBarsPadding()
+            .systemBarsPadding()
+            .nestedScroll(nestedScrollConnection)
+            .pointerInput(isExploring) {
+                detectVerticalDragGestures { _, dragAmount ->
+                    if (!isExploring && dragAmount < -15) {
+                        isExploring = true
+                    }
+                }
+            },
+    ) {
+        // Space Background
+        Image(
+            painter = painterResource(R.drawable.img_stars),
+            contentDescription = "Stars",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        // Earth: Rendered FIRST so it sits layout-wise BEHIND the text elements
+        Image(
+            painter = painterResource(R.drawable.img_earth),
+            contentDescription = "Earth",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = earthOffsetY)
+                .size(earthSize)
+        )
+
+        // STATE 1: Intro Text Content
+        if (introAlpha > 0f) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                EarthHeader(
+                    modifier = Modifier
+                        .offset(y = introHeaderOffsetY)
+                        .alpha(introAlpha)
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                SwipeUpTip(
+                    modifier = Modifier
+                        .padding(bottom = 20.dp)
+                        .offset(y = tipOffsetY)
+                        .alpha(introAlpha)
+                )
+            }
+        }
+
+        // STATE 2: Explore Content (Matches Figma perfectly)
+        if (exploreAlpha > 0f) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Header overlays seamlessly on top of the background Earth sphere
+                SolarSystemHeader(
+                    modifier = Modifier
+                        .padding(top = 96.dp)
+                        .alpha(exploreAlpha)
+                        // Moved pointerInput back here so it doesn't break list scrolling!
+                        .pointerInput(Unit) {
+                            detectVerticalDragGestures { _, dragAmount ->
+                                if (dragAmount > 15) isExploring = false
+                            }
+                        }
+                )
+
+                // Perfect spacing breakdown to let the list cards dynamically overlap the lower edge of the globe
+                Spacer(modifier = Modifier.height(174.dp)) // Adjusted for the header spacing
+
+                // Planets Scrollable Section with 3D Wallet Stacking
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .offset(y = listOffsetY)
+                        .alpha(exploreAlpha)
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(bottom = 24.dp)
+                ) {
+                    itemsIndexed(planets) { index, planet ->
+                        PlanetInfoItem(
+                            planetInfo = planet,
+                            modifier = Modifier.graphicsLayer {
+                                // Defer layout reading to the draw phase so it doesn't cause recomposition
+                                val layoutInfo = listState.layoutInfo
+                                val itemInfo =
+                                    layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+
+                                if (itemInfo != null) {
+                                    val delta = itemInfo.offset.toFloat()
+
+                                    // If offset is negative, the item is scrolling off the top boundary
+                                    if (delta < 0f) {
+                                        val fraction = -delta / itemInfo.size.toFloat()
+
+                                        // Pushes the card slightly UP (30dp) relative to the one covering it so it peeks out
+                                        val stagger = 30.dp.toPx()
+
+                                        // Visually pin it to the top + stagger it backward
+                                        translationY = -delta - (fraction * stagger)
+
+                                        // Scale it down incrementally the further "deep" it gets stacked
+                                        val scale = (1f - (fraction * 0.08f)).coerceAtLeast(0.7f)
+                                        scaleX = scale
+                                        scaleY = scale
+
+                                        // Add a subtle depth shadow by lowering alpha
+                                        alpha = (1f - (fraction * 0.2f)).coerceAtLeast(0.1f)
+
+                                        // Pivot point at Top Center so scaling only shrinks sides and bottom
+                                        transformOrigin = TransformOrigin(0.5f, 0f)
+                                    } else {
+                                        // Normal behavior for unpinned cards
+                                        translationY = 0f
+                                        scaleX = 1f
+                                        scaleY = 1f
+                                        alpha = 1f
+                                    }
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
-private fun EarthHeader() {
+private fun EarthHeader(
+    modifier: Modifier = Modifier
+) {
     Column(
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
             text = "Earth",
@@ -88,8 +358,11 @@ private fun EarthHeader() {
 }
 
 @Composable
-private fun SwipeUpTip() {
+private fun SwipeUpTip(
+    modifier: Modifier = Modifier
+) {
     Column(
+        modifier = modifier,
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -119,6 +392,7 @@ private fun SwipeUpTip() {
 @Composable
 private fun SolarSystemHeader(modifier: Modifier = Modifier) {
     Column(
+        modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.Top),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -419,6 +693,6 @@ private val planets = listOf(
 @Composable
 fun Preview(modifier: Modifier = Modifier) {
     SolarSystemTheme {
-        EarthHeader()
+        EarthIntroScreen()
     }
 }
